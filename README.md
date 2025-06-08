@@ -409,8 +409,429 @@ reboot
 6. **Leia os avisos e notas de release:**  
    Algumas versões podem conter mudanças que exigem atenção especial, como configurações ou migrações de sistema.
 
-## Migrações para o ProxMox
+### Migrações para o ProxMox
+
+A migração via Wizard integrada do Proxmox VE é uma ferramenta fácil e eficiente para mover máquinas virtuais (VMs) ou containers (CTs) de um nó para outro dentro do próprio ambiente Proxmox, minimizando o tempo de indisponibilidade e evitando configurações manuais complexas.
+
+#### Como funciona a migração via Wizard integrada:
+1. **Acesso:** No interface web do Proxmox, selecione a VM ou container que deseja migrar.
+2. **Iniciar Migração:** Clique com o botão direito na VM ou CT, escolha "Migrate" (Migrar).
+3. **Configuração:** Uma janela será aberta, permitindo selecionar o nó de destino para a migração.
+4. **Opções disponíveis:**
+   - **Migração em tempo real (online):** Permite mover a VM enquanto ela está em execução, evitando downtime.
+   - **Migração offline:** Necessária se a VM estiver desligada ou se a configuração atual não suportar a migração ao vivo.
+5. **Processo:** O wizard gerencia todas as etapas, incluindo a cópia dos discos, configuração de rede, e atualização do estado no banco de dados do Proxmox.
+6. **Conclusão:** Ao final, a VM é migrada para o novo nó, e ela pode continuar operando normalmente ou ser iniciada lá, dependendo do estágio do processo.
+
+Para migrar uma VM do VMware ESXi para o Proxmox, você geralmente precisa converter a imagem do disco da VM para um formato compatível com o Proxmox (como QCOW2 ou RAW) e criar uma nova VM no Proxmox usando essa imagem convertida. Aqui está um procedimento passo a passo:
+
+### Passos para migrar de VMware ESXi para Proxmox:
+
+1. **Exportar a VM do VMware ESXi:**
+   - Use o **vSphere Client** ou **VMware Workstation** para exportar a VM como um arquivo OVF ou OVA.
+   - Alternativamente, descarregue os arquivos do VM (discos VMDK, configs, etc.) via SSH ou cliente de gerência de arquivos.
+
+2. **Converter os discos VMDK para QCOW2 ou RAW:**
+   - Faça o download do **qemu-img**, uma ferramenta que permite a conversão de discos:
+     ```
+     qemu-img convert -f vmdk -O qcow2 nome_origem.vmdk nome_destino.qcow2
+     ```
+   - Para converter VMDK para RAW:
+     ```
+     qemu-img convert -f vmdk -O raw nome_origem.vmdk nome_destino.raw
+     ```
+
+3. **Criar uma nova VM no Proxmox:**
+   - No Proxmox, crie uma VM com configurações similares à original do VMware.
+   - Durante a criação, escolha a opção de usar um disco existente e faça o upload do arquivo convertida (QCOW2 ou RAW) para o armazenamento do Proxmox (por exemplo, via SCP).
+
+4. **Associar o disco convertido à VM no Proxmox:**
+   - Após criar a VM, edite a configuração (`/etc/pve/qemu-server/<ID>.conf`) para usar o disco importado.
+   - Exemplo de linha de disco:
+     ```
+     ide0: local-lvm:vm-100-disk-0,format=qcow2
+     ```
+     ou
+     ```
+     virtio0: local-lvm:vm-100-disk-0,format=qcow2
+     ```
+   - Ajuste o hardware de acordo, incluindo memória, CPU, placa de rede, etc.
+
+5. **Iniciar a VM no Proxmox:**
+   - Faça os ajustes finais, como instalar drivers adicionais (por exemplo, VirtIO) se necessário.
+   - Inicie a VM e verifique se ela está funcionando corretamente.
+
+### Dicas adicionais:
+- Se a VM usa drivers específicos do VMware (como VMware Tools), você poderá precisar reinstalá-los ou atualizar os drivers após a migração.
+- Teste a VM antes de remover a original do VMware.
 
 ## Automação
 
-## Outros
+Os comandos disponíveis no `pct` (Proxmox Container Toolkit) são utilizados para gerenciar containers LXC no Proxmox. Aqui estão alguns dos principais comandos e suas funções:
+
+### Comandos principais do `pct`
+
+- **create**  
+  Cria um novo container LXC a partir de um template.
+  ```bash
+  pct create <VMID> <template> [opções]
+  ```
+
+- **start**  
+  Inicia um container existente.
+  ```bash
+  pct start <VMID>
+  ```
+
+- **stop**  
+  Para um container em execução.
+  ```bash
+  pct stop <VMID>
+  ```
+
+- **restart**  
+  Reinicia o container.
+  ```bash
+  pct restart <VMID>
+  ```
+
+- **destroy**  
+  Remove um container definitivamente.
+  ```bash
+  pct destroy <VMID>
+  ```
+
+- **status** ou **info**  
+  Exibe informações básicas do container.
+  ```bash
+  pct status <VMID>
+  ```
+
+- **exec**  
+  Executa um comando dentro do container.
+  ```bash
+  pct exec <VMID> -- <comando>
+  ```
+
+- **path**  
+  Mostra o caminho do container.
+  ```bash
+  pct path <VMID>
+  ```
+
+- **restore**  
+  Restaura um container a partir de um backup.
+  ```bash
+  pct restore <VMID> <arquivo-de-backup>
+  ```
+
+- **mount** / **unmount**  
+  Monta ou desmonta o sistema de arquivos do container.
+  ```bash
+  pct mount <VMID>
+  pct unmount <VMID>
+  ```
+
+- **set**  
+  Altera as configurações do container.
+  ```bash
+  pct set <VMID> <opções>
+  ```
+
+- **net**  
+  Configura ou exibe a rede do container.
+  ```bash
+  pct network <comando> <VMID>
+  ```
+
+- **push** / **pull**  
+  Transferência de arquivos entre o host Proxmox e o container.
+
+- **backup** (via vzdump)  
+  Para fazer backup do container.
+
+### Exemplo de uso
+```bash
+# Criar um container com ID 101 usando um template
+pct create 101 /var/lib/lxc/template.tar.gz --hostname myct --memory 512 --net0 name=eth0,bridge=vmbr0,ip=dhcp
+
+# Iniciar o container
+pct start 101
+
+# Acessar o container
+pct exec 101 -- bash
+
+# Parar o container
+pct stop 101
+```
+
+Se precisar de uma lista completa e detalhada, você pode rodar:
+```bash
+pct help
+```
+
+### Gerenciando VMs via qm
+
+O comando `qm` no Proxmox é utilizado para gerenciar máquinas virtuais baseadas em QEMU/KVM. Ele fornece uma interface de linha de comando poderosa para criar, modificar, iniciar, parar, migrar e fazer backups das VMs.
+
+- **create**  
+  Cria uma nova VM.
+  ```bash
+  qm create <VMID> [opções]
+  ```
+  Exemplo:
+  ```bash
+  qm create 100 --memory 2048 --net0 virtio=XX:XX:XX:XX:XX:XX,bridge=vmbr0 --cores 2 --sockets 1 --name minha_vm
+  ```
+
+- **start**  
+  Inicia uma VM existente.
+  ```bash
+  qm start <VMID>
+  ```
+
+- **stop**  
+  Para a VM.
+  ```bash
+  qm stop <VMID>
+  ```
+
+- **restart**  
+  Reinicia a VM.
+  ```bash
+  qm restart <VMID>
+  ```
+
+- **destroy**  
+  Remove a VM (inclusive do disco).
+  ```bash
+  qm destroy <VMID>
+  ```
+
+- **resize**  
+  Redimensiona o disco da VM.
+  ```bash
+  qm resize <VMID> <disco>:<tamanho>
+  ```
+  Exemplo:
+  ```bash
+  qm resize 100 scsi0 +10G
+  ```
+
+- **set**  
+  Altera as configurações de uma VM.
+  ```bash
+  qm set <VMID> <parâmetros>
+  ```
+
+- **config**  
+  Visualiza ou edita as configurações da VM.
+  ```bash
+  qm config <VMID>
+  ```
+
+- **snapshot**  
+  Cria ou gerencia snapshots.
+  ```bash
+  qm snapshot <VMID> <nome_do_snapshot>
+  ```
+
+- **rollback**  
+  Restaura a VM a um snapshot anterior.
+  ```bash
+  qm rollback <VMID> <nome_do_snapshot>
+  ```
+
+- **migrate**  
+  Move uma VM para outro nó Proxmox.
+  ```bash
+  qm migrate <VMID> <destino>
+  ```
+
+- **clone**  
+  Clona uma VM.
+  ```bash
+  qm clone <source_VMID> <dest_VMID> --name <nome>
+  ```
+
+### Exemplo básico
+Criando uma VM:
+```bash
+qm create 101 --memory 2048 --net0 virtio=52:54:00:12:34:56,bridge=vmbr0 --cores 2 --sockets 1 --ide2 local:cloudinit --boot order=ide2 --name meu_vm
+```
+
+Iniciando a VM:
+```bash
+qm start 101
+```
+
+Parando a VM:
+```bash
+qm stop 101
+```
+
+### Dica
+Para listar todas as VMs existentes:
+```bash
+qm list
+```
+
+### ProxMox API
+
+O Proxmox VE oferece uma API RESTful completa que permite gerenciar virtualizações, armazenamento, redes, e mais, de forma programática. Essa API é acessível via HTTP/HTTPS e é amplamente utilizada para integrações, automações e ferramentas de gerenciamento.
+
+#### 1. **Autenticação**
+- Usa tokens de API ou autenticação baseada em usuário e senha.
+- Recomenda-se o uso de tokens para automações seguras.
+
+#### 2. **Endpoints principais**
+- `GET /api2/json/` — ponto de entrada para acessar diversos recursos.
+- Recursos comuns:
+  - `/nodes/{node}/qemu` — VMs KVM.
+  - `/nodes/{node}/lxc` — containers LXC.
+  - `/nodes/{node}/storage` — armazenamento.
+  - `/clusters` — informações do cluster.
+
+#### 3. **Realização de ações**
+Você pode criar, iniciar, parar, migrar VMs, fazer backup, etc., tudo via chamadas HTTP.
+
+#### Exemplos básicos de uso da API
+
+#### Autenticação
+Você faz uma requisição POST ao endpoint `/api2/json/access/ticket` com usuário e senha para obter um ticket e uma chave de CSRF:
+```bash
+curl -d "username=root@pam&password=senha" \
+     https://<seu-proxmox>:8006/api2/json/access/ticket
+```
+Resposta:
+```json
+{
+  "data": {
+    "ticket": "PVEAuthCookie",
+    "CSRFPreventionToken": "token",
+    ...
+  }
+}
+```
+Use esses tokens nos cabeçalhos das próximas requisições.
+
+#### Criar uma VM via API
+Enviar uma requisição POST para `/nodes/{node}/qemu` com os dados da VM:
+```bash
+curl -X POST \
+-H "Authorization: PVEAuthCookie=SEU_TICKET" \
+-H "CSRFPreventionToken: seu_token" \
+-d "vmid=101&name=MinhaVM&cores=2&memory=2048&net0=virtio,bridge=vmbr0" \
+https://<seu-proxmox>:8006/api2/json/nodes/{node}/qemu
+```
+
+#### Iniciar uma VM
+```bash
+curl -X POST \
+-H "Authorization: PVEAuthCookie=SEU_TICKET" \
+-H "CSRFPreventionToken: seu_token" \
+https://<seu-proxmox>:8006/api2/json/nodes/{node}/qemu/101/status/start
+```
+
+### Automação com **Ansible**
+
+Utilizar Ansible e Terraform para automatizar tarefas no Proxmox é uma excelente estratégia para gerenciar sua infraestrutura de forma consistente e escalável.
+
+#### Como funciona:
+- **Ansible** pode usar módulos personalizados ou scripts que interagem com a API REST do Proxmox ou com comandos CLI (`qm`, `pct`).
+- Existem **roles** e **playbooks** criados pela comunidade que facilitam a gestão de VMs, containers, backup, etc.
+
+#### Exemplos:
+- **Criar uma VM usando API via Ansible** (com o módulo `uri`):
+  
+  ```yaml
+  - name: Criar VM no Proxmox
+    hosts: localhost
+    tasks:
+      - name: Autenticar no Proxmox
+        uri:
+          url: https://<proxmox>/api2/json/access/ticket
+          method: POST
+          body: "username=root@pam&password=senha"
+          body_format: form-urlencoded
+          return_content: yes
+        register: token_response
+
+      - name: Criar VM
+        uri:
+          url: https://<proxmox>/api2/json/nodes/<node>/qemu
+          method: POST
+          headers:
+            Cookie: PVEAuthCookie={{ token_response.json.data.ticket }}
+            CSRFPreventionToken: "{{ token_response.json.data.CSRFPreventionToken }}"
+          body:
+            vmid: 102
+            name: minha_vm
+            cores: 2
+            memory: 2048
+            net0: virtio,bridge=vmbr0
+          body_format: form-urlencoded
+          status_code: 200
+  ```
+  
+- **Usar roles existentes**:
+  - Existem roles da Ansible Galaxy que facilitam a configuração e gerenciamento do Proxmox.
+
+### Automação com **Terraform**
+
+#### Como funciona:
+- O **Terraform** possui **provider** para Proxmox, que permite criar e gerenciar VMs e containers usando configuração declarativa.
+- Você pode definir sua infraestrutura em arquivos `.tf`, e o Terraform aplica as mudanças automaticamente.
+
+#### Configurando o Provider Proxmox:
+- Ainda que o suporte seja comunitário e em constante evolução, um provider popular é o `telmate/proxmox`.
+
+#### Exemplo básico:
+```hcl
+provider "proxmox" {
+  pm_api_url = "https://<proxmox>:8006/api2/json"
+  pm_user    = "root@pam"
+  pm_password = "sua_senha"
+  pm_tls_insecure = true
+}
+
+resource "proxmox_vm_qemu" "minha_vm" {
+  vm_id    = 100
+  name     = "MinhaVM"
+  target_node = "<node>"
+  memory   = 2048
+  cores    = 2
+  
+  disk {
+    type = "scsi"
+    storage = "local-lvm"
+    size = "20G"
+  }
+
+  network {
+    model = "virtio"
+    bridge = "vmbr0"
+  }
+}
+```
+
+- Depois de escrever seu `.tf`, é só aplicar:
+  ```bash
+  terraform init
+  terraform apply
+  ```
+
+### Integração
+- Você pode usar **Ansible** para tarefas de configuração pós-implantação.
+- Use **Terraform** para provisionar a infraestrutura básica, como criação de VMs e containers.
+- Combine ambos para automação completa.
+
+
+
+## Referencias
+- [Proxmox VE Documentation](https://pve.proxmox.com/pve-docs/)
+- [API Documentation](https://pve.proxmox.com/pve-docs/api-viewer/)
+- [Proxmox Community Forum](https://forum.proxmox.com/)
+- [Reddit r/proxmox](https://www.reddit.com/r/Proxmox/)
+- [How to Install Proxmox VE](https://www.howtoforge.com/tutorial/how-to-install-proxmox-ve/)
+
